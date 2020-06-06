@@ -327,6 +327,12 @@ static void task_process(void *pvParameters) {
 		printf(STRING_LINE);
         state = DONE;
 		
+		if (xSemaphoreTake(xSemaphoreButton, (TickType_t)500) == pdTRUE)
+		{
+			led = !led;
+			sprintf(digital, "LED=%d", led);
+		}
+		
 		char *needle = "Date:";
 		char *ret;
 
@@ -348,11 +354,7 @@ static void task_process(void *pvParameters) {
 		sprintf(POSTDATA, "%s&tempo=%s", digital, sub);
 		printf("%s", POSTDATA);
 		
-		if (xSemaphoreTake(xSemaphoreButton, (TickType_t)500) == pdTRUE)
-		{
-			led = !led;
-			printf("\nLED: %d\n", led);
-		}
+		
       }
       else {
         state = TIMEOUT;
