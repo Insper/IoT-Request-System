@@ -51,7 +51,6 @@ static char server_host_name[] = MAIN_SERVER_NAME;
 SemaphoreHandle_t xSemaphoreButton;
 volatile char led = 0;
 
-
 /************************************************************************/
 /* RTOS                                                                 */
 /************************************************************************/
@@ -225,7 +224,7 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
       printf("socket_cb: Year: %d, Month: %d, The GMT time is %u:%02u:%02u\r\n",
       strSysTime_now->u16Year,
       strSysTime_now->u8Month,
-      strSysTime_now->u8Hour,    /* hour (86400 equals secs per day) */
+      strSysTime_now->u8Hour - 3,    /* hour (86400 equals secs per day) */
       strSysTime_now->u8Minute,  /* minute (3600 equals secs per minute) */
       strSysTime_now->u8Second); /* second */
       break;
@@ -257,11 +256,17 @@ static void task_process(void *pvParameters) {
   enum states {
     WAIT = 0,
     GET,
+	POST,
     ACK,
     MSG,
     TIMEOUT,
     DONE,
   };
+  
+  int contentLength;
+  char *analogico;
+  char *digital = "LED=1";
+  char *POSTDATA = "LED=1&tempo=18:18:18";
 
   enum states state = WAIT;
 
@@ -274,7 +279,7 @@ static void task_process(void *pvParameters) {
       while(gbTcpConnection == false && tcp_client_socket >= 0){
         vTaskDelay(10);
       }
-      state = GET;
+      state = POST;
       break;
 
       case GET:
@@ -284,6 +289,15 @@ static void task_process(void *pvParameters) {
       send(tcp_client_socket, g_sendBuffer, strlen((char *)g_sendBuffer), 0);
       state = ACK;
       break;
+	  
+	  case POST:
+	  printf("STATE: POST \n");
+	  contentLength = strlen(POSTDATA);
+	  sprintf((char *)g_sendBuffer, "POST /status HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: %d\n\n%s",
+	  contentLength, POSTDATA);
+	  send(tcp_client_socket, g_sendBuffer, strlen((char *)g_sendBuffer), 0);
+	  state = ACK;
+	  break;
 
       case ACK:
       printf("STATE: ACK \n");
@@ -313,30 +327,31 @@ static void task_process(void *pvParameters) {
 		printf(STRING_LINE);
         state = DONE;
 		
-		const char needle[4] = "led";
+		char *needle = "Date:";
 		char *ret;
 
 		ret = strstr(p_recvMsg->pu8Buffer, needle);
+		
+		int c = 0;
+		int p = 23;
+		int l = 31-p;
+		char sub[9];
+		
+		while (c < l) {
+			sub[c] = ret[p+c];
+			c++;
+		}
+		sub[c] = '\0';
 
-		printf("The substring is: %c\n", ret[7]);
+		printf("The substring is: %s\n", sub);
+		
+		sprintf(POSTDATA, "%s&tempo=%s", digital, sub);
+		printf("%s", POSTDATA);
 		
 		if (xSemaphoreTake(xSemaphoreButton, (TickType_t)500) == pdTRUE)
 		{
 			led = !led;
 			printf("\nLED: %d\n", led);
-		}
-		
-		if (!led) {
-			if (strcmp(ret[7], '1')) {
-				pio_set(LED_PIO, LED_IDX_MASK);
-			} else if (strcmp(ret[7], '0')) {
-				pio_clear(LED_PIO, LED_IDX_MASK);
-			} else {
-				printf("LED nao encontrado");
-			}
-		} else {
-			printf("\nacendeu led\n");
-			pio_clear(LED_PIO, LED_IDX_MASK);
 		}
       }
       else {
