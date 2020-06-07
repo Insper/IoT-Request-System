@@ -186,6 +186,7 @@ static void socket_cb(SOCKET sock, uint8_t u8Msg, void *pvMsg)
 *
 * \return None.
 */
+char identifier[20];
 static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 {
   switch (u8MsgType) {
@@ -206,9 +207,11 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 
     case M2M_WIFI_REQ_DHCP_CONF:
     {
+	  vTaskDelay(10);
       uint8_t *pu8IPAddress = (uint8_t *)pvMsg;
       printf("wifi_cb: IP address is %u.%u.%u.%u\r\n",
       pu8IPAddress[0], pu8IPAddress[1], pu8IPAddress[2], pu8IPAddress[3]);
+	  sprintf(identifier, "ID=%u.%u.%u.%u", pu8IPAddress[0], pu8IPAddress[1], pu8IPAddress[2], pu8IPAddress[3]);
       wifi_connected = M2M_WIFI_CONNECTED;
       break;
     }
@@ -265,8 +268,8 @@ static void task_process(void *pvParameters) {
   
   int contentLength;
   char *analogico;
-  char *digital = "LED=1";
-  char *POSTDATA = "LED=1&tempo=18:18:18";
+  char digital[10];
+  char POSTDATA[] = "LED=0&tempo=00:00:00&ID=000.000.0.000";
 
   enum states state = WAIT;
 
@@ -330,8 +333,11 @@ static void task_process(void *pvParameters) {
 		if (xSemaphoreTake(xSemaphoreButton, (TickType_t)500) == pdTRUE)
 		{
 			led = !led;
-			sprintf(digital, "LED=%d", led);
 		}
+		
+		sprintf(digital, "LED=%d", led);
+		
+		printf("iden: %s\n", identifier);
 		
 		char *needle = "Date:";
 		char *ret;
@@ -351,8 +357,8 @@ static void task_process(void *pvParameters) {
 
 		printf("The substring is: %s\n", sub);
 		
-		sprintf(POSTDATA, "%s&tempo=%s", digital, sub);
-		printf("%s", POSTDATA);
+		sprintf(POSTDATA, "%s&tempo=%s&%s", digital, sub, identifier);
+		printf("%s\n", POSTDATA);
 		
 		
       }
