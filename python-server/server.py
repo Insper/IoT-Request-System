@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from flask_restful import Resource, Api
-
+from werkzeug.serving import WSGIRequestHandler
 app = Flask(__name__)
 
 global led
@@ -29,4 +29,5 @@ def status():
       return jsonify({'led' : led, 'tempo':tempo, 'id': identifier}), 200
 
 if __name__ == '__main__':
+    WSGIRequestHandler.protocol_version = "HTTP/1.1"
     app.run(host='0.0.0.0',debug=True)
