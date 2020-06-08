@@ -48,6 +48,10 @@ static char server_host_name[] = MAIN_SERVER_NAME;
 #define BUT_IDX_MASK (1 << BUT_IDX)
 #define BUT_PRIOR 4
 
+#define AFEC_POT AFEC1
+#define AFEC_POT_ID ID_AFEC1
+#define AFEC_POT_CHANNEL 1 // Canal do pino PC13
+
 SemaphoreHandle_t xSemaphoreButton;
 
 typedef struct
@@ -62,6 +66,102 @@ typedef struct
 } calendar;
 
 calendar rtc_initial;
+
+/************************************************************************/
+/* AFEC                                                               */
+/************************************************************************/
+QueueHandle_t xQueueADC, xQueuePlot;
+
+typedef struct {
+	uint value;
+} adcData;
+
+static void AFEC_pot_Callback(void){
+  adcData adc;
+  adc.value = afec_channel_get_value(AFEC_POT, AFEC_POT_CHANNEL);
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  xQueueSendFromISR(xQueueADC, &adc, &xHigherPriorityTaskWoken);
+  
+}
+
+static void config_AFEC_pot(Afec *afec, uint32_t afec_id, uint32_t afec_channel, afec_callback_t callback){
+  /*************************************
+  * Ativa e configura AFEC
+  *************************************/
+  /* Ativa AFEC - 0 */
+  afec_enable(afec);
+
+  /* struct de configuracao do AFEC */
+  struct afec_config afec_cfg;
+
+  /* Carrega parametros padrao */
+  afec_get_config_defaults(&afec_cfg);
+
+  /* Configura AFEC */
+  afec_init(afec, &afec_cfg);
+
+  /* Configura trigger por software */
+  afec_set_trigger(afec, AFEC_TRIG_SW);
+
+  /*** Configuracao específica do canal AFEC ***/
+  struct afec_ch_config afec_ch_cfg;
+  afec_ch_get_config_defaults(&afec_ch_cfg);
+  afec_ch_cfg.gain = AFEC_GAINVALUE_0;
+  afec_ch_set_config(afec, afec_channel, &afec_ch_cfg);
+
+  /*
+  * Calibracao:
+  * Because the internal ADC offset is 0x200, it should cancel it and shift
+  down to 0.
+  */
+  afec_channel_set_analog_offset(afec, afec_channel, 0x200);
+
+  /***  Configura sensor de temperatura ***/
+  struct afec_temp_sensor_config afec_temp_sensor_cfg;
+
+  afec_temp_sensor_get_config_defaults(&afec_temp_sensor_cfg);
+  afec_temp_sensor_set_config(afec, &afec_temp_sensor_cfg);
+  
+  /* configura IRQ */
+  afec_set_callback(afec, afec_channel,	callback, 1);
+  NVIC_SetPriority(afec_id, 4);
+  NVIC_EnableIRQ(afec_id);
+}
+
+/************************************************************************/
+/* TC                                                               */
+/************************************************************************/
+void TC1_Handler(void){
+	volatile uint32_t ul_dummy;
+
+	ul_dummy = tc_get_status(TC0, 1);
+
+	/* Avoid compiler warning */
+	UNUSED(ul_dummy);
+
+	/* Selecina canal e inicializa conversão */
+	afec_channel_enable(AFEC_POT, AFEC_POT_CHANNEL);
+	afec_start_software_conversion(AFEC_POT);
+}
+
+void TC_init(Tc * TC, int ID_TC, int TC_CHANNEL, int freq){
+	uint32_t ul_div;
+	uint32_t ul_tcclks;
+	uint32_t ul_sysclk = sysclk_get_cpu_hz();
+
+	pmc_enable_periph_clk(ID_TC);
+
+	tc_find_mck_divisor(freq, ul_sysclk, &ul_div, &ul_tcclks, ul_sysclk);
+	tc_init(TC, TC_CHANNEL, ul_tcclks | TC_CMR_CPCTRG);
+	tc_write_rc(TC, TC_CHANNEL, (ul_sysclk / ul_div) / freq);
+
+	NVIC_SetPriority((IRQn_Type) ID_TC, 4);
+	NVIC_EnableIRQ((IRQn_Type) ID_TC);
+	tc_enable_interrupt(TC, TC_CHANNEL, TC_IER_CPCS);
+
+	tc_start(TC, TC_CHANNEL);
+}
+
 
 /************************************************************************/
 /* RTOS                                                                 */
@@ -286,6 +386,13 @@ static void task_process(void *pvParameters) {
   printf("task process created \n");
   vTaskDelay(1000);
   
+  adcData adc;
+  xQueueADC  = xQueueCreate( 200, sizeof( adcData ) );
+  
+  // configura ADC e TC para controlar a leitura
+  config_AFEC_pot(AFEC_POT, AFEC_POT_ID, AFEC_POT_CHANNEL, AFEC_pot_Callback);
+  TC_init(TC0, ID_TC1, 1, 1);
+  
   RTC_init(RTC, ID_RTC, rtc_initial, RTC_IER_ALREN | RTC_IER_SECEN);
   
   uint32_t hour;
@@ -306,7 +413,7 @@ static void task_process(void *pvParameters) {
   };
   
   int contentLength;
-  char *analogico;
+  char analogico[15];
   char digital[10];
   char tempo[15];
   char POSTDATA[50];
@@ -335,6 +442,9 @@ static void task_process(void *pvParameters) {
       break;
 	  
 	  case POST:
+	  if(xQueueReceive( xQueueADC, &(adc), 100)){
+		  sprintf(analogico,"POT=%d", (int) adc.value);
+	  }
 	  
 	  if (xSemaphoreTake(xSemaphoreButton, (TickType_t)0) == pdTRUE)
 	  {
@@ -346,7 +456,7 @@ static void task_process(void *pvParameters) {
 	  rtc_get_time(RTC, &hour, &minute, &second);
 	  sprintf(tempo, "tempo=%02d:%02d:%02d", hour, minute, second);
 	  
-	  sprintf(POSTDATA, "%s&%s&%s", digital, tempo, identifier);
+	  sprintf(POSTDATA, "%s&%s&%s&%s", digital, tempo, identifier, analogico);
 	  printf("postdata: %s\n", POSTDATA);
 	  
 	  printf("STATE: POST \n");
