@@ -49,7 +49,19 @@ static char server_host_name[] = MAIN_SERVER_NAME;
 #define BUT_PRIOR 4
 
 SemaphoreHandle_t xSemaphoreButton;
-volatile char led = 0;
+
+typedef struct
+{
+	uint32_t year;
+	uint32_t month;
+	uint32_t day;
+	uint32_t week;
+	uint32_t hour;
+	uint32_t minute;
+	uint32_t seccond;
+} calendar;
+
+calendar rtc_initial;
 
 /************************************************************************/
 /* RTOS                                                                 */
@@ -93,6 +105,19 @@ extern void vApplicationMallocFailedHook(void){
 /************************************************************************/
 /* funcoes                                                              */
 /************************************************************************/
+
+void RTC_init(Rtc *rtc, uint32_t id_rtc, calendar t, uint32_t irq_type)
+{
+	/* Configura o PMC */
+	pmc_enable_periph_clk(ID_RTC);
+
+	/* Default RTC configuration, 24-hour mode */
+	rtc_set_hour_mode(rtc, 0);
+
+	/* Configura data e hora manualmente */
+	rtc_set_date(rtc, t.year, t.month, t.day, t.week);
+	rtc_set_time(rtc, t.hour, t.minute, t.seccond);
+}
 
 /************************************************************************/
 /* callbacks                                                            */
@@ -224,10 +249,18 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
       /* Print the hour, minute and second.
       * GMT is the time at Greenwich Meridian.
       */
+	  rtc_initial.year = strSysTime_now->u16Year;
+	  rtc_initial.month = strSysTime_now->u8Month;
+	  rtc_initial.week = 0;
+	  rtc_initial.day = 0;
+	  rtc_initial.hour = strSysTime_now->u8Hour-3;
+	  rtc_initial.minute = strSysTime_now->u8Minute;
+	  rtc_initial.seccond = strSysTime_now->u8Second;
+	  
       printf("socket_cb: Year: %d, Month: %d, The GMT time is %u:%02u:%02u\r\n",
       strSysTime_now->u16Year,
       strSysTime_now->u8Month,
-      strSysTime_now->u8Hour - 3,    /* hour (86400 equals secs per day) */
+      strSysTime_now->u8Hour ,    /* hour (86400 equals secs per day) */
       strSysTime_now->u8Minute,  /* minute (3600 equals secs per minute) */
       strSysTime_now->u8Second); /* second */
       break;
@@ -252,6 +285,12 @@ static void task_process(void *pvParameters) {
 
   printf("task process created \n");
   vTaskDelay(1000);
+  
+  RTC_init(RTC, ID_RTC, rtc_initial, RTC_IER_ALREN | RTC_IER_SECEN);
+  
+  uint32_t hour;
+  uint32_t minute;
+  uint32_t second;
 
   uint msg_counter = 0;
   tstrSocketRecvMsg *p_recvMsg;
@@ -269,11 +308,13 @@ static void task_process(void *pvParameters) {
   int contentLength;
   char *analogico;
   char digital[10];
-  char POSTDATA[] = "LED=0&tempo=00:00:00&ID=000.000.0.000";
+  char tempo[15];
+  char POSTDATA[50];
+  char led = 0;
 
   enum states state = WAIT;
 
-  while(1){  
+  while(1){ 
 
     switch(state){
       case WAIT:
@@ -281,7 +322,7 @@ static void task_process(void *pvParameters) {
       printf("STATE: WAIT \n");
       while(gbTcpConnection == false && tcp_client_socket >= 0){
         vTaskDelay(10);
-      }
+       }
       state = POST;
       break;
 
@@ -294,6 +335,20 @@ static void task_process(void *pvParameters) {
       break;
 	  
 	  case POST:
+	  
+	  if (xSemaphoreTake(xSemaphoreButton, (TickType_t)0) == pdTRUE)
+	  {
+		  led = !led;
+	  }
+	  
+	  sprintf(digital, "LED=%d", led);
+	  
+	  rtc_get_time(RTC, &hour, &minute, &second);
+	  sprintf(tempo, "tempo=%02d:%02d:%02d", hour, minute, second);
+	  
+	  sprintf(POSTDATA, "%s&%s&%s", digital, tempo, identifier);
+	  printf("postdata: %s\n", POSTDATA);
+	  
 	  printf("STATE: POST \n");
 	  contentLength = strlen(POSTDATA);
 	  sprintf((char *)g_sendBuffer, "POST /status HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: %d\n\n%s",
@@ -329,38 +384,6 @@ static void task_process(void *pvParameters) {
         printf(STRING_EOL);  
 		printf(STRING_LINE);
         state = DONE;
-		
-		if (xSemaphoreTake(xSemaphoreButton, (TickType_t)500) == pdTRUE)
-		{
-			led = !led;
-		}
-		
-		sprintf(digital, "LED=%d", led);
-		
-		printf("iden: %s\n", identifier);
-		
-		char *needle = "Date:";
-		char *ret;
-
-		ret = strstr(p_recvMsg->pu8Buffer, needle);
-		
-		int c = 0;
-		int p = 23;
-		int l = 31-p;
-		char sub[9];
-		
-		while (c < l) {
-			sub[c] = ret[p+c];
-			c++;
-		}
-		sub[c] = '\0';
-
-		printf("The substring is: %s\n", sub);
-		
-		sprintf(POSTDATA, "%s&tempo=%s&%s", digital, sub, identifier);
-		printf("%s\n", POSTDATA);
-		
-		
       }
       else {
         state = TIMEOUT;
