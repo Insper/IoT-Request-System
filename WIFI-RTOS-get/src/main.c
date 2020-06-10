@@ -56,10 +56,6 @@ SemaphoreHandle_t xSemaphoreButton;
 
 typedef struct
 {
-	uint32_t year;
-	uint32_t month;
-	uint32_t day;
-	uint32_t week;
 	uint32_t hour;
 	uint32_t minute;
 	uint32_t seccond;
@@ -215,7 +211,6 @@ void RTC_init(Rtc *rtc, uint32_t id_rtc, calendar t, uint32_t irq_type)
 	rtc_set_hour_mode(rtc, 0);
 
 	/* Configura data e hora manualmente */
-	rtc_set_date(rtc, t.year, t.month, t.day, t.week);
 	rtc_set_time(rtc, t.hour, t.minute, t.seccond);
 }
 
@@ -349,13 +344,11 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
       /* Print the hour, minute and second.
       * GMT is the time at Greenwich Meridian.
       */
-	  rtc_initial.year = strSysTime_now->u16Year;
-	  rtc_initial.month = strSysTime_now->u8Month;
-	  rtc_initial.week = 0;
-	  rtc_initial.day = 0;
 	  rtc_initial.hour = strSysTime_now->u8Hour-3;
 	  rtc_initial.minute = strSysTime_now->u8Minute;
 	  rtc_initial.seccond = strSysTime_now->u8Second;
+	  
+	  printf("hora:   %u\n", rtc_initial.hour);
 	  
       printf("socket_cb: Year: %d, Month: %d, The GMT time is %u:%02u:%02u\r\n",
       strSysTime_now->u16Year,
@@ -395,16 +388,13 @@ static void task_process(void *pvParameters) {
   
   RTC_init(RTC, ID_RTC, rtc_initial, RTC_IER_ALREN | RTC_IER_SECEN);
   
-  uint32_t hour;
-  uint32_t minute;
-  uint32_t second;
+  uint32_t h, m, s;
 
   uint msg_counter = 0;
   tstrSocketRecvMsg *p_recvMsg;
 
   enum states {
     WAIT = 0,
-    GET,
 	POST,
     ACK,
     MSG,
@@ -432,16 +422,11 @@ static void task_process(void *pvParameters) {
        }
       state = POST;
       break;
-
-      case GET:
-      printf("STATE: GET \n");
-      //sprintf((char *)g_sendBuffer, MAIN_PREFIX_BUFFER);
-	  format_get(g_sendBuffer, "/status");
-      send(tcp_client_socket, g_sendBuffer, strlen((char *)g_sendBuffer), 0);
-      state = ACK;
-      break;
 	  
 	  case POST:
+	  //evita erros de carregamento ao iniciailzar e evita spam do server
+	  vTaskDelay(250);
+	  pio_set(LED_PIO, LED_IDX_MASK);
 	  if(xQueueReceive( xQueueADC, &(adc), 100)){
 		  sprintf(analogico,"POT=%d", (int) adc.value);
 	  }
@@ -453,8 +438,8 @@ static void task_process(void *pvParameters) {
 	  
 	  sprintf(digital, "LED=%d", led);
 	  
-	  rtc_get_time(RTC, &hour, &minute, &second);
-	  sprintf(tempo, "tempo=%02d:%02d:%02d", hour, minute, second);
+	  rtc_get_time(RTC, &h, &m, &s);
+	  sprintf(tempo, "tempo=%02d:%02d:%02d", h, m, s);
 	  
 	  sprintf(POSTDATA, "%s&%s&%s&%s", digital, tempo, identifier, analogico);
 	  printf("postdata: %s\n", POSTDATA);
@@ -475,7 +460,13 @@ static void task_process(void *pvParameters) {
       if(xQueueReceive(xQueueMsg, &p_recvMsg, 5000) == pdTRUE){
         printf(STRING_LINE);
         printf(p_recvMsg->pu8Buffer);
-        printf(STRING_EOL);  printf(STRING_LINE);
+        printf(STRING_EOL);  
+		printf(STRING_LINE);
+		
+		char *ret = strstr(p_recvMsg->pu8Buffer, "HTTP/1.1");
+		if (ret[13] == 'O' && ret[14] == 'K') {
+			pio_clear(LED_PIO, LED_IDX_MASK);
+		}
         state = MSG;
       }
       else {
