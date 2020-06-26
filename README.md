@@ -12,7 +12,7 @@
 <h4>Components:</h4>
 <ul>
   <li>1x SAM E70 Xplained (ATMEL)</li>
-  <li>1x WIFI - ATWINC1500-XPRO (Wifi module)
+  <li>1x WIFI - ATWINC1500-XPRO (Wifi module)<br />
     Specifications:
     <ul>
       <li>IEEE 802.11 b/g/n 20MHz (1x1) solution</li>
@@ -23,9 +23,20 @@
   <li>Jumpers</li>
   <li>1x potentiometer B10K</li>
 </ul>
-<br />
 <h4>First steps:</h4>
 <p>To implement our code it is necessary to connect the Wifi module at port EXT1 and the potentiometer in EXT2 as follows on image below.</p>
 <p align="center">
   <img src="IoT-system.png" title="IoT-connections">
 </p>
+<p>Potentiometer:</p>
+<ol>
+  <li>VCC</li>
+  <li>PC 13</li>
+  <li>GND</li>
+</ol>
+<h4>How interruptions work?</h4>
+<p>All code was made using interruptions to get them data.</p>
+
+<p>Interruptions are basically a signal/warning that some action was taken, be it by pressing a button or receiving/sending something via wi-fi. For this project, the information collected was sent every second, updating the data displayed online.</p>
+
+<p>The data collected refers to the digital and analogical signals, along with a timestamp and an ID of the processor.</p> 
