@@ -24,7 +24,7 @@
   <li>1x potentiometer B10K</li>
 </ul>
 <h4>First steps:</h4>
-<p>To implement our code it is necessary to connect the Wifi module at port EXT1 and the potentiometer in EXT2 as follows on image below.</p>
+<p>To use our code it is necessary to connect the Wifi module at port EXT1 and the potentiometer in EXT2 as follows on image below.</p>
 <p align="center">
   <img src="IoT-system.png" title="IoT-connections">
 </p>
@@ -35,7 +35,7 @@
   <li>GND</li>
 </ol>
 <h4>How interruptions work?</h4>
-<p>All code was made using interruptions to get them data.</p>
+<p>All code was made using interruptions to get the data.</p>
 
 <p>Interruptions are basically a signal/warning that some action was taken, be it by pressing a button or receiving/sending something via wi-fi. For this project, the information collected was sent every second, updating the data displayed online.</p>
 
