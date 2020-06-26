@@ -26,4 +26,6 @@
 <br />
 <h4>First steps:</h4>
 <p>To implement our code it is necessary to connect the Wifi module at port EXT1 and the potentiometer in EXT2 as follows on image below.</p>
-![IoT-system](IoT-system.png)
+<p align="center">
+  <img src="IoT-system.png" title="IoT-connections">
+</p>
